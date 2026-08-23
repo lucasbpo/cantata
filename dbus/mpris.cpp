@@ -114,6 +114,7 @@ Mpris::Mpris(QObject* p)
 	connect(this, SIGNAL(seek(qint32)), MPDConnection::self(), SLOT(seek(qint32)));
 	connect(this, SIGNAL(setVolume(int)), MPDConnection::self(), SLOT(setVolume(int)));
 	connect(this, SIGNAL(startPlayingSongId(qint32)), MPDConnection::self(), SLOT(startPlayingSongId(qint32)));
+	connect(this, SIGNAL(loadPlaylist(const QString&, bool)), MPDConnection::self(), SLOT(loadPlaylist(const QString&, bool)));
 
 	connect(CurrentCover::self(), SIGNAL(coverFile(const QString&)), this, SLOT(updateCurrentCover(const QString&)));
 
@@ -122,6 +123,11 @@ Mpris::Mpris(QObject* p)
 	connect(PlayQueueModel::self(), SIGNAL(rowsAboutToBeRemoved(const QModelIndex&, int, int)), this, SLOT(playQueueRowsAboutToBeRemoved(const QModelIndex&, int, int)));
 	connect(PlayQueueModel::self(), SIGNAL(rowsRemoved(const QModelIndex&, int, int)), this, SLOT(playQueueRowsRemoved(const QModelIndex&, int, int)));
 	connect(PlayQueueModel::self(), SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&)), this, SLOT(playQueueDataChanged(const QModelIndex&, const QModelIndex&)));
+
+	connect(PlaylistsModel::self(), SIGNAL(modelReset()), this, SLOT(playlistsReset()));
+	connect(PlaylistsModel::self(), SIGNAL(rowsInserted(const QModelIndex&, int, int)), this, SLOT(playlistsChanged()));
+	connect(PlaylistsModel::self(), SIGNAL(rowsRemoved(const QModelIndex&, int, int)), this, SLOT(playlistsChanged()));
+	connect(PlaylistsModel::self(), SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&)), this, SLOT(playlistsDataChanged(const QModelIndex&, const QModelIndex&)));
 }
 
 Mpris::~Mpris()
@@ -336,17 +342,17 @@ uint Mpris::PlaylistCount() const
 
 MprisActivePlaylist Mpris::ActivePlaylist() const
 {
-	MprisActivePlaylist active;
-	active.valid = false;
-	return active;
+	return currentActivePlaylist;
 }
 
 void Mpris::ActivatePlaylist(const QDBusObjectPath& playlistId)
 {
 	QString name = pathToPlaylist(playlistId);
 	if (!name.isEmpty()) {
-		MPDConnection::self()->loadPlaylist(name, true);
-		MPDConnection::self()->play();
+		currentActivePlaylist.valid = true;
+		currentActivePlaylist.playlist = MprisPlaylist(playlistId, name, QLatin1String("audio-x-generic"));
+		signalUpdate(QLatin1String("ActivePlaylist"), QVariant::fromValue(currentActivePlaylist), QLatin1String("org.mpris.MediaPlayer2.Playlists"));
+		emit loadPlaylist(name, true);
 	}
 }
 
@@ -374,6 +380,26 @@ MprisPlaylistList Mpris::GetPlaylists(uint index, uint maxCount, const QString& 
 		result.append(std::move(pl));
 	}
 	return result;
+}
+
+void Mpris::playlistsReset()
+{
+	signalUpdate(QLatin1String("PlaylistCount"), QVariant::fromValue(PlaylistCount()), QLatin1String("org.mpris.MediaPlayer2.Playlists"));
+}
+
+void Mpris::playlistsChanged()
+{
+	signalUpdate(QLatin1String("PlaylistCount"), QVariant::fromValue(PlaylistCount()), QLatin1String("org.mpris.MediaPlayer2.Playlists"));
+}
+
+void Mpris::playlistsDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight)
+{
+	PlaylistsModel* pm = PlaylistsModel::self();
+	for (int row = topLeft.row(); row <= bottomRight.row(); ++row) {
+		QModelIndex idx = pm->index(row, 0, QModelIndex());
+		QString name = pm->data(idx, Qt::DisplayRole).toString();
+		emit PlaylistChanged(MprisPlaylist(playlistToPath(name), name, QLatin1String("audio-x-generic")));
+	}
 }
 
 void Mpris::playQueueReset()

@@ -240,6 +240,7 @@ Q_SIGNALS:
 	void seek(qint32 offset);
 	void setVolume(int vol);
 	void startPlayingSongId(qint32 songId);
+	void loadPlaylist(const QString& name, bool replace);
 
 	void showMainWindow();
 
@@ -254,6 +255,9 @@ private Q_SLOTS:
 	void playQueueRowsAboutToBeRemoved(const QModelIndex& parent, int first, int last);
 	void playQueueRowsRemoved(const QModelIndex& parent, int first, int last);
 	void playQueueDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
+	void playlistsReset();
+	void playlistsChanged();
+	void playlistsDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
 
 private:
 	void signalUpdate(const QString& property, const QVariant& value, const QString& iface = QLatin1String("org.mpris.MediaPlayer2.Player"));
@@ -266,6 +270,7 @@ private:
 	MPDStatusValues lastStatus;
 	QString currentCover;
 	Song currentSong;
+	MprisActivePlaylist currentActivePlaylist;
 };
 
 #endif
