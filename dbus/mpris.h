@@ -38,11 +38,11 @@
 
 struct MprisPlaylist {
 	MprisPlaylist()
-		: id(QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")))
+		: id(QLatin1String("/org/mpris/MediaPlayer2/Playlists/NoPlaylist"))
 	{
 	}
 	MprisPlaylist(const QDBusObjectPath& i, const QString& n, const QString& ic)
-		: id(i.path().isEmpty() ? QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")) : i), name(n), icon(ic)
+		: id(i.path().isEmpty() ? QDBusObjectPath(QLatin1String("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")) : i), name(n), icon(ic)
 	{
 	}
 	QDBusObjectPath id;
@@ -203,7 +203,11 @@ public:
 
 	// org.mpris.MediaPlayer2.Playlists
 	uint PlaylistCount() const;
-	QStringList Orderings() const { return QStringList() << QLatin1String("Alphabetical") << QLatin1String("User"); }
+	QStringList Orderings() const
+	{
+		static const QStringList list = { QLatin1String("Alphabetical"), QLatin1String("User") };
+		return list;
+	}
 	MprisActivePlaylist ActivePlaylist() const;
 	void ActivatePlaylist(const QDBusObjectPath& playlistId);
 	MprisPlaylistList GetPlaylists(uint index, uint maxCount, const QString& order, bool reverseOrder);

@@ -47,14 +47,14 @@ static inline qlonglong convertTime(qlonglong t)
 static inline QDBusObjectPath trackIdToPath(qint32 songId)
 {
 	if (songId < 0) {
-		return QDBusObjectPath("/org/mpris/MediaPlayer2/TrackList/NoTrack");
+		return QDBusObjectPath(QLatin1String("/org/mpris/MediaPlayer2/TrackList/NoTrack"));
 	}
-	return QDBusObjectPath(QString("/org/mpris/MediaPlayer2/TrackList/Track_%1").arg(songId));
+	return QDBusObjectPath(QLatin1String("/org/mpris/MediaPlayer2/TrackList/Track_") + QString::number(songId));
 }
 
 static inline qint32 pathToTrackId(const QDBusObjectPath& path)
 {
-	QString p = path.path();
+	const QString& p = path.path();
 	if (p.endsWith(QLatin1String("/NoTrack"))) {
 		return -1;
 	}
@@ -73,12 +73,12 @@ static inline qint32 pathToTrackId(const QDBusObjectPath& path)
 static inline QDBusObjectPath playlistToPath(const QString& name)
 {
 	QByteArray hex = name.toUtf8().toHex();
-	return QDBusObjectPath(QString("/org/mpris/MediaPlayer2/Playlists/PL_%1").arg(QString::fromLatin1(hex)));
+	return QDBusObjectPath(QLatin1String("/org/mpris/MediaPlayer2/Playlists/PL_") + QString::fromLatin1(hex));
 }
 
 static inline QString pathToPlaylist(const QDBusObjectPath& path)
 {
-	QString p = path.path();
+	const QString& p = path.path();
 	int idx = p.lastIndexOf(QLatin1String("PL_"));
 	if (idx < 0) {
 		return QString();
@@ -218,33 +218,41 @@ qlonglong Mpris::Position() const
 
 QStringList Mpris::SupportedUriSchemes() const
 {
-	return QStringList() << QLatin1String("file") << QLatin1String("http") << QLatin1String("https") << QLatin1String("cdda");
+	static const QStringList list = {
+		QLatin1String("file"),
+		QLatin1String("http"),
+		QLatin1String("https"),
+		QLatin1String("cdda")
+	};
+	return list;
 }
 
 QStringList Mpris::SupportedMimeTypes() const
 {
-	return QStringList()
-			<< QLatin1String("audio/mpeg")
-			<< QLatin1String("audio/ogg")
-			<< QLatin1String("audio/x-vorbis+ogg")
-			<< QLatin1String("audio/flac")
-			<< QLatin1String("audio/x-flac")
-			<< QLatin1String("audio/aac")
-			<< QLatin1String("audio/mp4")
-			<< QLatin1String("audio/x-wav")
-			<< QLatin1String("audio/wav")
-			<< QLatin1String("audio/x-matroska")
-			<< QLatin1String("audio/x-aiff")
-			<< QLatin1String("audio/opus")
-			<< QLatin1String("application/ogg")
-			<< QLatin1String("application/x-ogg");
+	static const QStringList list = {
+		QLatin1String("audio/mpeg"),
+		QLatin1String("audio/ogg"),
+		QLatin1String("audio/x-vorbis+ogg"),
+		QLatin1String("audio/flac"),
+		QLatin1String("audio/x-flac"),
+		QLatin1String("audio/aac"),
+		QLatin1String("audio/mp4"),
+		QLatin1String("audio/x-wav"),
+		QLatin1String("audio/wav"),
+		QLatin1String("audio/x-matroska"),
+		QLatin1String("audio/x-aiff"),
+		QLatin1String("audio/opus"),
+		QLatin1String("application/ogg"),
+		QLatin1String("application/x-ogg")
+	};
+	return list;
 }
 
 QList<QDBusObjectPath> Mpris::Tracks() const
 {
-	QList<QDBusObjectPath> list;
 	PlayQueueModel* pq = PlayQueueModel::self();
 	int count = pq->rowCount();
+	QList<QDBusObjectPath> list;
 	list.reserve(count);
 	for (int i = 0; i < count; ++i) {
 		qint32 id = pq->getIdByRow(i);
@@ -256,6 +264,7 @@ QList<QDBusObjectPath> Mpris::Tracks() const
 QList<QVariantMap> Mpris::GetTracksMetadata(const QList<QDBusObjectPath>& trackIds) const
 {
 	QList<QVariantMap> result;
+	result.reserve(trackIds.size());
 	PlayQueueModel* pq = PlayQueueModel::self();
 	for (const QDBusObjectPath& path : trackIds) {
 		qint32 id = pathToTrackId(path);
@@ -351,24 +360,18 @@ MprisPlaylistList Mpris::GetPlaylists(uint index, uint maxCount, const QString& 
 		return result;
 	}
 
-	QList<int> indices;
-	for (int i = 0; i < count; ++i) {
-		indices.append(i);
-	}
-	if (reverseOrder) {
-		std::reverse(indices.begin(), indices.end());
-	}
+	uint totalToTake = std::min((uint)(count - index), maxCount);
+	result.reserve(totalToTake);
 
-	uint taken = 0;
-	for (uint i = index; i < (uint)indices.count() && taken < maxCount; ++i, ++taken) {
-		int row = indices.at(i);
+	for (uint taken = 0; taken < totalToTake; ++taken) {
+		int row = reverseOrder ? (count - 1 - (int)(index + taken)) : (int)(index + taken);
 		QModelIndex idx = pm->index(row, 0, QModelIndex());
 		QString name = pm->data(idx, Qt::DisplayRole).toString();
 		MprisPlaylist pl;
 		pl.id = playlistToPath(name);
-		pl.name = name;
+		pl.name = std::move(name);
 		pl.icon = QLatin1String("audio-x-generic");
-		result.append(pl);
+		result.append(std::move(pl));
 	}
 	return result;
 }
@@ -495,7 +498,7 @@ QVariantMap Mpris::songToMetadata(const Song& song, const QString& coverFile) co
 {
 	QVariantMap metadataMap;
 	if ((!song.title.isEmpty() && !song.artist.isEmpty()) || (song.isStandardStream() && !song.name().isEmpty())) {
-		metadataMap.insert("mpris:trackid", QVariant::fromValue(trackIdToPath(song.id)));
+		metadataMap.insert(QLatin1String("mpris:trackid"), QVariant::fromValue(trackIdToPath(song.id)));
 		QString artist = song.artist;
 		QString album = song.album;
 		QString title = song.title;
@@ -512,57 +515,57 @@ QVariantMap Mpris::songToMetadata(const Song& song, const QString& coverFile) co
 			}
 		}
 		if (song.time > 0) {
-			metadataMap.insert("mpris:length", convertTime(song.time));
+			metadataMap.insert(QLatin1String("mpris:length"), convertTime(song.time));
 		}
 		if (!album.isEmpty()) {
-			metadataMap.insert("xesam:album", album);
+			metadataMap.insert(QLatin1String("xesam:album"), album);
 		}
 		if (!song.albumartist.isEmpty() && song.albumartist != song.artist) {
-			metadataMap.insert("xesam:albumArtist", QStringList() << song.albumartist);
+			metadataMap.insert(QLatin1String("xesam:albumArtist"), QStringList() << song.albumartist);
 		}
 		if (!artist.isEmpty()) {
-			metadataMap.insert("xesam:artist", QStringList() << artist);
+			metadataMap.insert(QLatin1String("xesam:artist"), QStringList() << artist);
 		}
 		if (!title.isEmpty()) {
-			metadataMap.insert("xesam:title", title);
+			metadataMap.insert(QLatin1String("xesam:title"), title);
 		}
 		if (!song.genres[0].isEmpty()) {
-			metadataMap.insert("xesam:genre", QStringList() << song.genres[0]);
+			metadataMap.insert(QLatin1String("xesam:genre"), QStringList() << song.genres[0]);
 		}
 		if (song.track > 0) {
-			metadataMap.insert("xesam:trackNumber", song.track);
+			metadataMap.insert(QLatin1String("xesam:trackNumber"), song.track);
 		}
 		if (song.disc > 0) {
-			metadataMap.insert("xesam:discNumber", song.disc);
+			metadataMap.insert(QLatin1String("xesam:discNumber"), song.disc);
 		}
 		if (song.year > 0) {
-			metadataMap.insert("xesam:contentCreated", QString("%1").arg(song.year, 4, 10, QChar(u'0')));
+			metadataMap.insert(QLatin1String("xesam:contentCreated"), QString("%1").arg(song.year, 4, 10, QChar(u'0')));
 		}
 		if (song.rating > 0 && song.rating <= Song::Rating_Max) {
-			metadataMap.insert("xesam:userRating", (double)song.rating / (double)Song::Rating_Max);
+			metadataMap.insert(QLatin1String("xesam:userRating"), (double)song.rating / (double)Song::Rating_Max);
 		}
 		if (!song.comment().isEmpty()) {
-			metadataMap.insert("xesam:comment", QStringList() << song.comment());
+			metadataMap.insert(QLatin1String("xesam:comment"), QStringList() << song.comment());
 		}
 		if (!song.composer().isEmpty()) {
-			metadataMap.insert("xesam:composer", QStringList() << song.composer());
+			metadataMap.insert(QLatin1String("xesam:composer"), QStringList() << song.composer());
 		}
 		if (!song.file.isEmpty()) {
 			if (song.isNonMPD()) {
-				metadataMap.insert("xesam:url", song.file);
+				metadataMap.insert(QLatin1String("xesam:url"), song.file);
 			}
 			else if (MPDConnection::self()->getDetails().dirReadable) {
-				QString mpdDir = MPDConnection::self()->getDetails().dir;
+				const QString& mpdDir = MPDConnection::self()->getDetails().dir;
 				if (!mpdDir.isEmpty()) {
-					metadataMap.insert("xesam:url", "file://" + mpdDir + song.file);
+					metadataMap.insert(QLatin1String("xesam:url"), QLatin1String("file://") + mpdDir + song.file);
 				}
 			}
 		}
 		if (!coverFile.isEmpty()) {
-			metadataMap.insert("mpris:artUrl", "file://" + coverFile);
+			metadataMap.insert(QLatin1String("mpris:artUrl"), QLatin1String("file://") + coverFile);
 		}
 		else if (!currentCover.isEmpty() && song.id == currentSong.id) {
-			metadataMap.insert("mpris:artUrl", "file://" + currentCover);
+			metadataMap.insert(QLatin1String("mpris:artUrl"), QLatin1String("file://") + currentCover);
 		}
 	}
 	return metadataMap;
@@ -590,9 +593,9 @@ void Mpris::signalUpdate(const QVariantMap& map, const QString& iface)
 	if (map.isEmpty()) {
 		return;
 	}
-	QDBusMessage signal = QDBusMessage::createSignal("/org/mpris/MediaPlayer2",
-	                                                 "org.freedesktop.DBus.Properties",
-	                                                 "PropertiesChanged");
+	QDBusMessage signal = QDBusMessage::createSignal(QLatin1String("/org/mpris/MediaPlayer2"),
+	                                                 QLatin1String("org.freedesktop.DBus.Properties"),
+	                                                 QLatin1String("PropertiesChanged"));
 	QVariantList args = QVariantList()
 			<< iface
 			<< map
