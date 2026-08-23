@@ -306,13 +306,7 @@ void Mpris::AddTrack(const QString& uri, const QDBusObjectPath& afterTrack, bool
 	if (decodedUri.startsWith(QLatin1String("file://"))) {
 		decodedUri = QUrl(uri).toLocalFile();
 	}
-	pq->load(QStringList() << decodedUri, row);
-	if (setAsCurrent && row >= 0) {
-		qint32 newId = pq->getIdByRow(row);
-		if (newId >= 0) {
-			emit startPlayingSongId(newId);
-		}
-	}
+	pq->addItems(QStringList() << decodedUri, row, setAsCurrent ? MPDConnection::AppendAndPlay : MPDConnection::Append, 0, false);
 }
 
 void Mpris::RemoveTrack(const QDBusObjectPath& trackId)
@@ -322,7 +316,7 @@ void Mpris::RemoveTrack(const QDBusObjectPath& trackId)
 		PlayQueueModel* pq = PlayQueueModel::self();
 		int row = pq->getRowById(id);
 		if (row >= 0) {
-			pq->removeSongs(QList<qint32>() << row);
+			pq->remove(QList<int>() << row);
 		}
 	}
 }
@@ -577,21 +571,25 @@ QVariantMap Mpris::songToMetadata(const Song& song, const QString& coverFile) co
 			metadataMap.insert(QLatin1String("xesam:composer"), QStringList() << song.composer());
 		}
 		if (!song.file.isEmpty()) {
-			if (song.isNonMPD()) {
+			if (song.isNonMPD() || song.file.contains(QLatin1String("://"))) {
 				metadataMap.insert(QLatin1String("xesam:url"), song.file);
 			}
 			else if (MPDConnection::self()->getDetails().dirReadable) {
 				const QString& mpdDir = MPDConnection::self()->getDetails().dir;
 				if (!mpdDir.isEmpty()) {
-					metadataMap.insert(QLatin1String("xesam:url"), QLatin1String("file://") + mpdDir + song.file);
+					QString fullPath = mpdDir + (mpdDir.endsWith(QLatin1Char('/')) ? QString() : QLatin1String("/")) + (song.file.startsWith(QLatin1Char('/')) ? song.file.mid(1) : song.file);
+					metadataMap.insert(QLatin1String("xesam:url"), QUrl::fromLocalFile(fullPath).toString());
 				}
 			}
 		}
-		if (!coverFile.isEmpty()) {
-			metadataMap.insert(QLatin1String("mpris:artUrl"), QLatin1String("file://") + coverFile);
-		}
-		else if (!currentCover.isEmpty() && song.id == currentSong.id) {
-			metadataMap.insert(QLatin1String("mpris:artUrl"), QLatin1String("file://") + currentCover);
+		const QString& art = !coverFile.isEmpty() ? coverFile : (song.id == currentSong.id ? currentCover : QString());
+		if (!art.isEmpty()) {
+			if (art.contains(QLatin1String("://"))) {
+				metadataMap.insert(QLatin1String("mpris:artUrl"), art);
+			}
+			else {
+				metadataMap.insert(QLatin1String("mpris:artUrl"), QUrl::fromLocalFile(art).toString());
+			}
 		}
 	}
 	return metadataMap;

@@ -170,7 +170,7 @@ public:
 	bool Shuffle() const { return !status.isNull() && status->random(); }
 	void SetShuffle(bool s) { emit setRandom(s); }
 	double Volume() const { return status.isNull() ? 0.0 : status->volume() / 100.0; }
-	void SetVolume(double v) { emit setVolume(qRound(v * 100)); }
+	void SetVolume(double v) { emit setVolume(qRound(std::clamp(v, 0.0, 1.0) * 100)); }
 	qlonglong Position() const;
 	double MinimumRate() const { return 1.0; }
 	double MaximumRate() const { return 1.0; }
