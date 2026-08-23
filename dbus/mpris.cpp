@@ -216,17 +216,6 @@ qlonglong Mpris::Position() const
 	return status.isNull() ? 0 : convertTime(status->guessedElapsed());
 }
 
-bool Mpris::Fullscreen() const
-{
-	QWidget* pw = qobject_cast<QWidget*>(parent());
-	return pw ? pw->isFullScreen() : false;
-}
-
-void Mpris::SetFullscreen(bool f)
-{
-	emit setWindowFullscreen(f);
-}
-
 QStringList Mpris::SupportedUriSchemes() const
 {
 	return QStringList() << QLatin1String("file") << QLatin1String("http") << QLatin1String("https") << QLatin1String("cdda");
@@ -468,20 +457,10 @@ void Mpris::updateStatus(MPDStatus* const status)
 	if (status->songId() != lastStatus.songId || status->timeTotal() != lastStatus.timeTotal) {
 		map.insert("CanSeek", CanSeek());
 	}
-	if (status->timeElapsed() != lastStatus.timeElapsed) {
-		map.insert("Position", convertTime(status->timeElapsed()));
-		if (status->songId() == lastStatus.songId && lastStatus.songId != -1 && status->state() == MPDState_Playing) {
-			int delta = qAbs((int)status->timeElapsed() - (int)lastStatus.timeElapsed);
-			if (delta > 2) {
-				emit Seeked(convertTime(status->timeElapsed()));
-			}
-		}
-	}
-	if (!map.isEmpty() || status->songId() != lastStatus.songId) {
-		if (!map.contains("Position")) {
-			map.insert("Position", convertTime(status->timeElapsed()));
-		}
+	if (status->songId() != lastStatus.songId) {
 		map.insert("Metadata", Metadata());
+	}
+	if (!map.isEmpty()) {
 		signalUpdate(map);
 	}
 

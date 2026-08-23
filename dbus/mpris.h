@@ -183,9 +183,9 @@ public:
 
 	// org.mpris.MediaPlayer2
 	bool CanQuit() const { return true; }
-	bool Fullscreen() const;
-	void SetFullscreen(bool f);
-	bool CanSetFullscreen() const { return true; }
+	bool Fullscreen() const { return false; }
+	void SetFullscreen(bool) {}
+	bool CanSetFullscreen() const { return false; }
 	bool CanRaise() const { return true; }
 	bool HasTrackList() const { return true; }
 	QString Identity() const { return QLatin1String(PACKAGE_NAME); }
@@ -238,7 +238,6 @@ Q_SIGNALS:
 	void startPlayingSongId(qint32 songId);
 
 	void showMainWindow();
-	void setWindowFullscreen(bool f);
 
 public Q_SLOTS:
 	void updateCurrentCover(const QString& fileName);

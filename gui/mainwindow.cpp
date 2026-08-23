@@ -1594,11 +1594,6 @@ void MainWindow::initMpris()
 		if (!mpris) {
 			mpris = new Mpris(this);
 			connect(mpris, SIGNAL(showMainWindow()), this, SLOT(restoreWindow()));
-			connect(mpris, &Mpris::setWindowFullscreen, this, [this](bool f) {
-				if (isFullScreen() != f) {
-					fullScreen();
-				}
-			});
 		}
 	}
 	else if (mpris) {
