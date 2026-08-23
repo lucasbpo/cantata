@@ -29,12 +29,82 @@
 #include "mpd-interface/mpdstatus.h"
 #include "mpd-interface/song.h"
 #include <QApplication>
+#include <QDBusArgument>
+#include <QDBusObjectPath>
 #include <QObject>
 #include <QPointer>
 #include <QStringList>
 #include <QVariantMap>
 
-class QDBusObjectPath;
+struct MprisPlaylist {
+	MprisPlaylist()
+		: id(QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")))
+	{
+	}
+	MprisPlaylist(const QDBusObjectPath& i, const QString& n, const QString& ic)
+		: id(i.path().isEmpty() ? QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")) : i), name(n), icon(ic)
+	{
+	}
+	QDBusObjectPath id;
+	QString name;
+	QString icon;
+};
+Q_DECLARE_METATYPE(MprisPlaylist)
+
+typedef QList<MprisPlaylist> MprisPlaylistList;
+Q_DECLARE_METATYPE(MprisPlaylistList)
+
+struct MprisActivePlaylist {
+	MprisActivePlaylist()
+		: valid(false)
+	{
+	}
+	bool valid;
+	MprisPlaylist playlist;
+};
+Q_DECLARE_METATYPE(MprisActivePlaylist)
+
+inline QDBusArgument& operator<<(QDBusArgument& argument, const MprisPlaylist& playlist)
+{
+	argument.beginStructure();
+	argument << (playlist.id.path().isEmpty() ? QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")) : playlist.id)
+	         << playlist.name
+	         << playlist.icon;
+	argument.endStructure();
+	return argument;
+}
+
+inline const QDBusArgument& operator>>(const QDBusArgument& argument, MprisPlaylist& playlist)
+{
+	argument.beginStructure();
+	argument >> playlist.id >> playlist.name >> playlist.icon;
+	argument.endStructure();
+	return argument;
+}
+
+inline QDBusArgument& operator<<(QDBusArgument& argument, const MprisActivePlaylist& active)
+{
+	argument.beginStructure();
+	argument << active.valid;
+	argument.beginStructure();
+	argument << (active.playlist.id.path().isEmpty() ? QDBusObjectPath(QStringLiteral("/org/mpris/MediaPlayer2/Playlists/NoPlaylist")) : active.playlist.id)
+	         << active.playlist.name
+	         << active.playlist.icon;
+	argument.endStructure();
+	argument.endStructure();
+	return argument;
+}
+
+inline const QDBusArgument& operator>>(const QDBusArgument& argument, MprisActivePlaylist& active)
+{
+	argument.beginStructure();
+	argument >> active.valid;
+	argument.beginStructure();
+	argument >> active.playlist.id >> active.playlist.name >> active.playlist.icon;
+	argument.endStructure();
+	argument.endStructure();
+	return argument;
+}
 
 class Mpris : public QObject {
 	Q_OBJECT
@@ -58,12 +128,23 @@ class Mpris : public QObject {
 
 	// org.mpris.MediaPlayer2
 	Q_PROPERTY(bool CanQuit READ CanQuit)
+	Q_PROPERTY(bool Fullscreen READ Fullscreen WRITE SetFullscreen)
+	Q_PROPERTY(bool CanSetFullscreen READ CanSetFullscreen)
 	Q_PROPERTY(bool CanRaise READ CanRaise)
-	Q_PROPERTY(QString DesktopEntry READ DesktopEntry)
 	Q_PROPERTY(bool HasTrackList READ HasTrackList)
 	Q_PROPERTY(QString Identity READ Identity)
+	Q_PROPERTY(QString DesktopEntry READ DesktopEntry)
 	Q_PROPERTY(QStringList SupportedMimeTypes READ SupportedMimeTypes)
 	Q_PROPERTY(QStringList SupportedUriSchemes READ SupportedUriSchemes)
+
+	// org.mpris.MediaPlayer2.TrackList
+	Q_PROPERTY(QList<QDBusObjectPath> Tracks READ Tracks)
+	Q_PROPERTY(bool CanEditTracks READ CanEditTracks)
+
+	// org.mpris.MediaPlayer2.Playlists
+	Q_PROPERTY(uint PlaylistCount READ PlaylistCount)
+	Q_PROPERTY(QStringList Orderings READ Orderings)
+	Q_PROPERTY(MprisActivePlaylist ActivePlaylist READ ActivePlaylist)
 
 public:
 	Mpris(QObject* p);
@@ -77,19 +158,19 @@ public:
 	void Stop() { StdActions::self()->stopPlaybackAction->trigger(); }
 	void StopAfterCurrent() { StdActions::self()->stopAfterCurrentTrackAction->trigger(); }
 	void Play();
-	void Seek(qlonglong pos) { emit seek(pos / 1000000); }
+	void Seek(qlonglong pos);
 	void SetPosition(const QDBusObjectPath& trackId, qlonglong pos);
-	void OpenUri(const QString&) {}
+	void OpenUri(const QString& uri);
 	QString PlaybackStatus() const;
-	QString LoopStatus() { return (!status.isNull() && status->repeat()) ? (status->single() ? QLatin1String("Track") : QLatin1String("Playlist")) : QLatin1String("None"); }
+	QString LoopStatus() const { return (!status.isNull() && status->repeat()) ? (status->single() ? QLatin1String("Track") : QLatin1String("Playlist")) : QLatin1String("None"); }
 	void SetLoopStatus(const QString& s);
 	QVariantMap Metadata() const;
-	int Rate() const { return 1.0; }
+	double Rate() const { return 1.0; }
 	void SetRate(double) {}
-	bool Shuffle() { return !status.isNull() && status->random(); }
+	bool Shuffle() const { return !status.isNull() && status->random(); }
 	void SetShuffle(bool s) { emit setRandom(s); }
 	double Volume() const { return status.isNull() ? 0.0 : status->volume() / 100.0; }
-	void SetVolume(double v) { emit setVolume(v * 100); }
+	void SetVolume(double v) { emit setVolume(qRound(v * 100)); }
 	qlonglong Position() const;
 	double MinimumRate() const { return 1.0; }
 	double MaximumRate() const { return 1.0; }
@@ -102,12 +183,30 @@ public:
 
 	// org.mpris.MediaPlayer2
 	bool CanQuit() const { return true; }
+	bool Fullscreen() const;
+	void SetFullscreen(bool f);
+	bool CanSetFullscreen() const { return true; }
 	bool CanRaise() const { return true; }
-	bool HasTrackList() const { return false; }
+	bool HasTrackList() const { return true; }
 	QString Identity() const { return QLatin1String(PACKAGE_NAME); }
 	QString DesktopEntry() const { return QLatin1String(PROJECT_REV_ID); }
-	QStringList SupportedUriSchemes() const { return QStringList(); }
-	QStringList SupportedMimeTypes() const { return QStringList(); }
+	QStringList SupportedUriSchemes() const;
+	QStringList SupportedMimeTypes() const;
+
+	// org.mpris.MediaPlayer2.TrackList
+	QList<QDBusObjectPath> Tracks() const;
+	bool CanEditTracks() const { return true; }
+	QList<QVariantMap> GetTracksMetadata(const QList<QDBusObjectPath>& trackIds) const;
+	void AddTrack(const QString& uri, const QDBusObjectPath& afterTrack, bool setAsCurrent);
+	void RemoveTrack(const QDBusObjectPath& trackId);
+	void GoTo(const QDBusObjectPath& trackId);
+
+	// org.mpris.MediaPlayer2.Playlists
+	uint PlaylistCount() const;
+	QStringList Orderings() const { return QStringList() << QLatin1String("Alphabetical") << QLatin1String("UserDefined"); }
+	MprisActivePlaylist ActivePlaylist() const;
+	void ActivatePlaylist(const QDBusObjectPath& playlistId);
+	MprisPlaylistList GetPlaylists(uint index, uint maxCount, const QString& order, bool reverseOrder);
 
 public:
 	void updateCurrentSong(const Song& song);
@@ -118,14 +217,28 @@ public Q_SLOTS:
 
 Q_SIGNALS:
 	// org.mpris.MediaPlayer2.Player
+	void Seeked(qlonglong Position);
+
+	// org.mpris.MediaPlayer2.TrackList
+	void TrackListReplaced(const QList<QDBusObjectPath>& tracks, const QDBusObjectPath& currentTrack);
+	void TrackAdded(const QVariantMap& metadata, const QDBusObjectPath& afterTrack);
+	void TrackRemoved(const QDBusObjectPath& trackId);
+	void TrackMetadataChanged(const QDBusObjectPath& trackId, const QVariantMap& metadata);
+
+	// org.mpris.MediaPlayer2.Playlists
+	void PlaylistChanged(const MprisPlaylist& playlist);
+
+	// Internal signals to MPD / MainWindow
 	void setRandom(bool toggle);
 	void setRepeat(bool toggle);
 	void setSingle(bool toggle);
 	void setSeekId(qint32 songId, quint32 time);
 	void seek(qint32 offset);
 	void setVolume(int vol);
+	void startPlayingSongId(qint32 songId);
 
 	void showMainWindow();
+	void setWindowFullscreen(bool f);
 
 public Q_SLOTS:
 	void updateCurrentCover(const QString& fileName);
@@ -133,11 +246,16 @@ public Q_SLOTS:
 
 private Q_SLOTS:
 	void updateStatus();
+	void playQueueReset();
+	void playQueueRowsInserted(const QModelIndex& parent, int first, int last);
+	void playQueueRowsRemoved(const QModelIndex& parent, int first, int last);
+	void playQueueDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
 
 private:
-	void signalUpdate(const QString& property, const QVariant& value);
-	void signalUpdate(const QVariantMap& map);
-	QString currentTrackId() const;
+	void signalUpdate(const QString& property, const QVariant& value, const QString& iface = QLatin1String("org.mpris.MediaPlayer2.Player"));
+	void signalUpdate(const QVariantMap& map, const QString& iface = QLatin1String("org.mpris.MediaPlayer2.Player"));
+	QDBusObjectPath currentTrackPath() const;
+	QVariantMap songToMetadata(const Song& song, const QString& coverFile = QString()) const;
 
 private:
 	QPointer<MPDStatus> status;

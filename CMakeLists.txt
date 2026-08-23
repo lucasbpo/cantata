@@ -597,6 +597,8 @@ if("DBus" IN_LIST QT_COMPONENTS)
 
     qt_add_dbus_adaptor(DBUS_GENERATED_SRCS dbus/org.mpris.MediaPlayer2.Player.xml dbus/mpris.h Mpris)
     qt_add_dbus_adaptor(DBUS_GENERATED_SRCS dbus/org.mpris.MediaPlayer2.root.xml dbus/mpris.h Mpris)
+    qt_add_dbus_adaptor(DBUS_GENERATED_SRCS dbus/org.mpris.MediaPlayer2.TrackList.xml dbus/mpris.h Mpris)
+    qt_add_dbus_adaptor(DBUS_GENERATED_SRCS dbus/org.mpris.MediaPlayer2.Playlists.xml dbus/mpris.h Mpris)
     qt_add_dbus_adaptor(DBUS_GENERATED_SRCS ${CMAKE_BINARY_DIR}/${PROJECT_REV_ID}.xml gui/mainwindow.h MainWindow)
     qt_add_dbus_interfaces(DBUS_GENERATED_SRCS 
         	dbus/org.freedesktop.UPower.xml
