@@ -203,7 +203,7 @@ public:
 
 	// org.mpris.MediaPlayer2.Playlists
 	uint PlaylistCount() const;
-	QStringList Orderings() const { return QStringList() << QLatin1String("Alphabetical") << QLatin1String("UserDefined"); }
+	QStringList Orderings() const { return QStringList() << QLatin1String("Alphabetical") << QLatin1String("User"); }
 	MprisActivePlaylist ActivePlaylist() const;
 	void ActivatePlaylist(const QDBusObjectPath& playlistId);
 	MprisPlaylistList GetPlaylists(uint index, uint maxCount, const QString& order, bool reverseOrder);
@@ -248,6 +248,7 @@ private Q_SLOTS:
 	void updateStatus();
 	void playQueueReset();
 	void playQueueRowsInserted(const QModelIndex& parent, int first, int last);
+	void playQueueRowsAboutToBeRemoved(const QModelIndex& parent, int first, int last);
 	void playQueueRowsRemoved(const QModelIndex& parent, int first, int last);
 	void playQueueDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight);
 

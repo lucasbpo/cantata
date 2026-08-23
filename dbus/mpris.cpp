@@ -65,7 +65,9 @@ static inline qint32 pathToTrackId(const QDBusObjectPath& path)
 	if (idx < 0) {
 		return -1;
 	}
-	return p.mid(idx + 1).toInt();
+	bool ok = false;
+	qint32 val = p.mid(idx + 1).toInt(&ok);
+	return ok ? val : -1;
 }
 
 static inline QDBusObjectPath playlistToPath(const QString& name)
@@ -117,6 +119,7 @@ Mpris::Mpris(QObject* p)
 
 	connect(PlayQueueModel::self(), SIGNAL(modelReset()), this, SLOT(playQueueReset()));
 	connect(PlayQueueModel::self(), SIGNAL(rowsInserted(const QModelIndex&, int, int)), this, SLOT(playQueueRowsInserted(const QModelIndex&, int, int)));
+	connect(PlayQueueModel::self(), SIGNAL(rowsAboutToBeRemoved(const QModelIndex&, int, int)), this, SLOT(playQueueRowsAboutToBeRemoved(const QModelIndex&, int, int)));
 	connect(PlayQueueModel::self(), SIGNAL(rowsRemoved(const QModelIndex&, int, int)), this, SLOT(playQueueRowsRemoved(const QModelIndex&, int, int)));
 	connect(PlayQueueModel::self(), SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&)), this, SLOT(playQueueDataChanged(const QModelIndex&, const QModelIndex&)));
 }
@@ -146,12 +149,16 @@ void Mpris::Seek(qlonglong pos)
 	qint32 offsetSeconds = pos / 1000000;
 	emit seek(offsetSeconds);
 	if (!status.isNull()) {
-		emit Seeked(convertTime(status->guessedElapsed() + offsetSeconds));
+		qlonglong target = std::max((qlonglong)0, (qlonglong)status->guessedElapsed() + offsetSeconds);
+		emit Seeked(convertTime(target));
 	}
 }
 
 void Mpris::SetPosition(const QDBusObjectPath& trackId, qlonglong pos)
 {
+	if (pos < 0) {
+		pos = 0;
+	}
 	if (trackId == currentTrackPath() || pathToTrackId(trackId) == currentSong.id) {
 		emit setSeekId(-1, pos / 1000000);
 		emit Seeked(pos);
@@ -278,8 +285,19 @@ QList<QVariantMap> Mpris::GetTracksMetadata(const QList<QDBusObjectPath>& trackI
 void Mpris::AddTrack(const QString& uri, const QDBusObjectPath& afterTrack, bool setAsCurrent)
 {
 	PlayQueueModel* pq = PlayQueueModel::self();
-	qint32 afterId = pathToTrackId(afterTrack);
-	int row = (afterId >= 0) ? (pq->getRowById(afterId) + 1) : -1;
+	int row = -1;
+	if (afterTrack.path().endsWith(QLatin1String("/NoTrack"))) {
+		row = 0;
+	}
+	else {
+		qint32 afterId = pathToTrackId(afterTrack);
+		if (afterId >= 0) {
+			int r = pq->getRowById(afterId);
+			if (r >= 0) {
+				row = r + 1;
+			}
+		}
+	}
 	QString decodedUri = uri;
 	if (decodedUri.startsWith(QLatin1String("file://"))) {
 		decodedUri = QUrl(uri).toLocalFile();
@@ -382,6 +400,17 @@ void Mpris::playQueueRowsInserted(const QModelIndex& /*parent*/, int first, int 
 		emit TrackAdded(songToMetadata(s), trackIdToPath(prevId));
 	}
 	signalUpdate(QLatin1String("Tracks"), QVariant::fromValue(Tracks()), QLatin1String("org.mpris.MediaPlayer2.TrackList"));
+}
+
+void Mpris::playQueueRowsAboutToBeRemoved(const QModelIndex& /*parent*/, int first, int last)
+{
+	PlayQueueModel* pq = PlayQueueModel::self();
+	for (int i = first; i <= last; ++i) {
+		qint32 id = pq->getIdByRow(i);
+		if (id >= 0) {
+			emit TrackRemoved(trackIdToPath(id));
+		}
+	}
 }
 
 void Mpris::playQueueRowsRemoved(const QModelIndex& /*parent*/, int first, int last)
